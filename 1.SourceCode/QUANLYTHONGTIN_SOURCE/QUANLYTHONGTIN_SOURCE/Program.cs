@@ -1,5 +1,5 @@
 ﻿using Couchbase;
-using Couchbase.KeyValue;
+using Couchbase.Management.Buckets;
 using Couchbase.Query;
 using Newtonsoft.Json;
 using QUANLYTHONGTIN_SOURCE.Models;
@@ -9,6 +9,8 @@ using System.Data.SqlClient;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using Couchbase.Management.Collections;
+using System.Threading;
 
 namespace QUANLYTHONGTIN_SOURCE
 {
@@ -24,6 +26,9 @@ namespace QUANLYTHONGTIN_SOURCE
             List<Product> products = JsonConvert.DeserializeObject<List<Product>>(jsonString);
             Console.WriteLine("QUAN LY THONG TIN NHOM 4 - COUCHBASE");
             Console.WriteLine("-------- START --------");
+            Console.WriteLine("");
+            await CreateNewBucketCouchBaseAsync("Nhom4_Buckket_HttpsRestfullAPI", "Internal", "User");
+            Console.WriteLine("");
             Console.WriteLine("");
             Console.WriteLine("1: INSERT DATA");
             Console.WriteLine("");
@@ -467,6 +472,34 @@ namespace QUANLYTHONGTIN_SOURCE
             double roundedSeconds = Math.Round(processSecond.TotalSeconds);
             Console.WriteLine(string.Format("End Time Couchbase: {0}", endTime.ToString(formatTime)));
             Console.WriteLine(string.Format("Total Time Process Couchbase: {0} seconds", roundedSeconds));
+        }
+
+        static async Task CreateNewBucketCouchBaseAsync(string bucketName, string scopeName, string collectionName)
+        {
+            Console.WriteLine("Process create new bucket by Http/RestAPI");
+
+            var cluster = Cluster.ConnectAsync("couchbase://127.0.0.1", "Admin", "123456aA@").GetAwaiter().GetResult();
+            var bucketManager = cluster.Buckets;
+            var bucketConfig = new BucketSettings
+            {
+                Name = bucketName,
+                RamQuotaMB = 1000,
+                BucketType = BucketType.Couchbase,
+                EvictionPolicy = EvictionPolicyType.ValueOnly,
+            };
+
+            await bucketManager.CreateBucketAsync(bucketConfig);
+            Console.WriteLine($"Bucket '{bucketName}' create successfull.");
+            Thread.Sleep(1000);
+            var bucket = await cluster.BucketAsync(bucketName);
+            await bucket.Collections.CreateScopeAsync(scopeName);
+            Console.WriteLine($"Scope '{scopeName}' create successfull.");
+            Thread.Sleep(1000);
+            await bucket.Collections.CreateCollectionAsync(scopeName, collectionName, new CreateCollectionSettings());
+            Console.WriteLine($"Collection '{collectionName}' create successfull.");
+
+
+            cluster.Dispose();
         }
     }
 }

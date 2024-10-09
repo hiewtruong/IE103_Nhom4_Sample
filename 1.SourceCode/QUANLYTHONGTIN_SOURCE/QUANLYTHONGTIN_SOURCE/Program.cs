@@ -27,28 +27,31 @@ namespace QUANLYTHONGTIN_SOURCE
             Console.WriteLine("QUAN LY THONG TIN NHOM 4 - COUCHBASE");
             Console.WriteLine("-------- START --------");
             Console.WriteLine("");
-            await CreateNewBucketCouchBaseAsync("Nhom4_Buckket_HttpsRestfullAPI", "Internal", "User");
+            Console.WriteLine("1: DEMO CREATE BUCKET-SCOPE-COLLECTION REALTIME");
+            Console.WriteLine("");
+            CreateNewBucketCouchBaseAsync("Nhom4_Buckket_HttpsRestfullAPI", "Internal", "User").GetAwaiter().GetResult();
             Console.WriteLine("");
             Console.WriteLine("");
-            Console.WriteLine("1: INSERT DATA");
+            Console.WriteLine("2: INSERT DATA");
             Console.WriteLine("");
             ProcessRunSQLDatabase(products, formatTime);
             Console.WriteLine("--------");
-            ProcessRunCouchBaseServer(products, formatTime);
+            ProcessRunCouchBaseServer(products, formatTime).GetAwaiter().GetResult();
             Console.WriteLine("");
             Console.WriteLine("");
-            Console.WriteLine("2: GET ALL");
+            Thread.Sleep(5000); // Make sure all data have imported
+            Console.WriteLine("3: GET ALL");
             Console.WriteLine("");
             ProcessRunGetDataSQLDatabaseGetAll(formatTime);
             Console.WriteLine("--------");
-            await ProcessRunGetDataCouchBaseAsyncGetAll(formatTime);
+            ProcessRunGetDataCouchBaseAsyncGetAll(formatTime).GetAwaiter().GetResult();
             Console.WriteLine("");
             Console.WriteLine("");
-            Console.WriteLine("3: GET DATA WITH CONDITION PRODUCT DETAILS CATEGORY LIKE 'Washing' OR TYPE LIKE 'techno'");
+            Console.WriteLine("4: GET DATA WITH CONDITION PRODUCT DETAILS CATEGORY LIKE 'Washing' OR TYPE LIKE 'techno'");
             Console.WriteLine("");
             ProcessRunGetDataSQLDatabase(formatTime);
             Console.WriteLine("--------");
-            await ProcessRunGetDataCouchBaseAsync(formatTime);
+            ProcessRunGetDataCouchBaseAsync(formatTime).GetAwaiter().GetResult();
             Console.WriteLine("-------- END --------");
             Console.ReadKey();
         }
@@ -151,7 +154,7 @@ namespace QUANLYTHONGTIN_SOURCE
             Console.WriteLine(string.Format("Total Time Process SQL: {0} seconds", roundedSeconds));
         }
 
-        static async void ProcessRunCouchBaseServer(List<Product> products, string formatTime)
+        static async Task ProcessRunCouchBaseServer(List<Product> products, string formatTime)
         {
             string bucketName = "QUANLYTHONGTIN_COUCHBASE_NHOM4";
             var cluster = Cluster.ConnectAsync("couchbase://127.0.0.1", "Admin", "123456aA@").GetAwaiter().GetResult();
@@ -177,7 +180,7 @@ namespace QUANLYTHONGTIN_SOURCE
                     detail.ProductId = productId;
                 }
 
-                collection.UpsertAsync(productId.ToString(), product).GetAwaiter().GetResult();
+                collection.InsertAsync(productId.ToString(), product).GetAwaiter().GetResult();
             }
             cluster.Dispose();
             DateTime endTime = DateTime.Now;
@@ -457,11 +460,12 @@ namespace QUANLYTHONGTIN_SOURCE
             var bucketConfig = new BucketSettings
             {
                 Name = bucketName,
-                RamQuotaMB = 1000,
+                RamQuotaMB = 100,
                 BucketType = BucketType.Couchbase,
                 EvictionPolicy = EvictionPolicyType.ValueOnly,
             };
-            var existingBucket = await bucketManager.GetBucketAsync(bucketName);
+            var allBuckets = await bucketManager.GetAllBucketsAsync();
+            var existingBucket = allBuckets.FirstOrDefault(x => x.Key == bucketName).Value; 
             if (existingBucket != null)
             {
                 Console.WriteLine($"Bucket '{bucketName}' is existed, please remove.");
@@ -485,13 +489,14 @@ namespace QUANLYTHONGTIN_SOURCE
             var cluster = Cluster.ConnectAsync("couchbase://127.0.0.1", "Admin", "123456aA@").GetAwaiter().GetResult();
             var bucketManager = cluster.Buckets;
 
-            var existingBucket = await bucketManager.GetBucketAsync(bucketName);
+            var allBuckets = await bucketManager.GetAllBucketsAsync();
+            var existingBucket = allBuckets.FirstOrDefault(x => x.Key == bucketName).Value;
             if (existingBucket == null)
             {
                 var bucketConfig = new BucketSettings
                 {
                     Name = bucketName,
-                    RamQuotaMB = 1000,
+                    RamQuotaMB = 10000,
                     BucketType = BucketType.Couchbase,
                     EvictionPolicy = EvictionPolicyType.ValueOnly,
                 };

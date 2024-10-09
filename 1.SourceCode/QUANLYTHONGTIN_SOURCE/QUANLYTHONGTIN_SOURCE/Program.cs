@@ -151,46 +151,35 @@ namespace QUANLYTHONGTIN_SOURCE
             Console.WriteLine(string.Format("Total Time Process SQL: {0} seconds", roundedSeconds));
         }
 
-        static void ProcessRunCouchBaseServer(List<Product> products, string formatTime)
+        static async void ProcessRunCouchBaseServer(List<Product> products, string formatTime)
         {
+            string bucketName = "QUANLYTHONGTIN_COUCHBASE_NHOM4";
+            var cluster = Cluster.ConnectAsync("couchbase://127.0.0.1", "Admin", "123456aA@").GetAwaiter().GetResult();
+            await CheckBucketExistsAsync(bucketName);
             DateTime startTime = DateTime.Now;
             Console.WriteLine(string.Format("Start Time Couchbase: {0}", startTime.ToString(formatTime)));
-            try
+            var bucket = cluster.BucketAsync(bucketName).GetAwaiter().GetResult();
+            var collection = bucket.DefaultCollection();
+            foreach (var product in products)
             {
-                var cluster = Cluster.ConnectAsync("couchbase://127.0.0.1", "Admin", "123456aA@").GetAwaiter().GetResult();
+                var productId = Guid.NewGuid();
+                product.Id = productId;
 
-                var bucket = cluster.BucketAsync("QUANLYTHONGTIN_COUCHBASE_NHOM4").GetAwaiter().GetResult();
-
-                var collection = bucket.DefaultCollection();
-
-                foreach (var product in products)
+                foreach (var image in product.ProductImages)
                 {
-                    var productId = Guid.NewGuid();
-                    product.Id = productId;
-
-                    foreach (var image in product.ProductImages)
-                    {
-                        image.Id = Guid.NewGuid();
-                        image.ProductId = productId;
-                    }
-
-                    foreach (var detail in product.ProductDetails)
-                    {
-                        detail.Id = Guid.NewGuid();
-                        detail.ProductId = productId;
-                    }
-
-                    collection.UpsertAsync(productId.ToString(), product).GetAwaiter().GetResult();
+                    image.Id = Guid.NewGuid();
+                    image.ProductId = productId;
                 }
 
+                foreach (var detail in product.ProductDetails)
+                {
+                    detail.Id = Guid.NewGuid();
+                    detail.ProductId = productId;
+                }
 
-                cluster.Dispose();
+                collection.UpsertAsync(productId.ToString(), product).GetAwaiter().GetResult();
             }
-            catch (Exception ex)
-            {
-
-            }
-
+            cluster.Dispose();
             DateTime endTime = DateTime.Now;
             var processSecond = endTime - startTime;
             double roundedSeconds = Math.Round(processSecond.TotalSeconds);
@@ -435,38 +424,23 @@ namespace QUANLYTHONGTIN_SOURCE
             DateTime startTime = DateTime.Now;
             Console.WriteLine(string.Format("Start Time Couchbase: {0}", startTime.ToString(formatTime)));
             var cluster = Cluster.ConnectAsync("couchbase://127.0.0.1", "Admin", "123456aA@").GetAwaiter().GetResult();
-            try
-            {
-                var bucket = await cluster.BucketAsync("QUANLYTHONGTIN_COUCHBASE_NHOM4");
-
-                string query = @"SELECT id, name, category, description, sku, productDetails, productImages
+            var bucket = await cluster.BucketAsync("QUANLYTHONGTIN_COUCHBASE_NHOM4");
+            string query = @"SELECT id, name, category, description, sku, productDetails, productImages
                                 FROM `QUANLYTHONGTIN_COUCHBASE_NHOM4`
                                 WHERE ANY pd IN productDetails SATISFIES 
                                       (LOWER(pd.category) LIKE '%washing%' OR LOWER(pd.type) LIKE '%techno%') 
                                       END
                                 LIMIT 10000";
+            var collection = bucket.DefaultCollection();
 
+            var result = await cluster.QueryAsync<Product>(query);
 
-                var collection = bucket.DefaultCollection();
-
-                var result = await cluster.QueryAsync<Product>(query);
-
-                if (result.MetaData.Status == QueryStatus.Success)
-                {
-                    var rowsList = await result.Rows.CountAsync();
-                    Console.WriteLine(string.Format("Total Records Founds: {0}", rowsList));
-                }
-
-                await cluster.DisposeAsync();
-
-
-            }
-            catch (Exception ex)
+            if (result.MetaData.Status == QueryStatus.Success)
             {
-                await cluster.DisposeAsync();
-                Console.WriteLine(ex.Message);
-                Console.ReadKey();
+                var rowsList = await result.Rows.CountAsync();
+                Console.WriteLine(string.Format("Total Records Founds: {0}", rowsList));
             }
+            await cluster.DisposeAsync();
             DateTime endTime = DateTime.Now;
             var processSecond = endTime - startTime;
             double roundedSeconds = Math.Round(processSecond.TotalSeconds);
@@ -487,7 +461,13 @@ namespace QUANLYTHONGTIN_SOURCE
                 BucketType = BucketType.Couchbase,
                 EvictionPolicy = EvictionPolicyType.ValueOnly,
             };
-
+            var existingBucket = await bucketManager.GetBucketAsync(bucketName);
+            if (existingBucket != null)
+            {
+                Console.WriteLine($"Bucket '{bucketName}' is existed, please remove.");
+                cluster.Dispose();
+                return;
+            }
             await bucketManager.CreateBucketAsync(bucketConfig);
             Console.WriteLine($"Bucket '{bucketName}' create successfull.");
             Thread.Sleep(1000);
@@ -497,8 +477,26 @@ namespace QUANLYTHONGTIN_SOURCE
             Thread.Sleep(1000);
             await bucket.Collections.CreateCollectionAsync(scopeName, collectionName, new CreateCollectionSettings());
             Console.WriteLine($"Collection '{collectionName}' create successfull.");
+            cluster.Dispose();
+        }
 
+        static async Task CheckBucketExistsAsync(string bucketName)
+        {
+            var cluster = Cluster.ConnectAsync("couchbase://127.0.0.1", "Admin", "123456aA@").GetAwaiter().GetResult();
+            var bucketManager = cluster.Buckets;
 
+            var existingBucket = await bucketManager.GetBucketAsync(bucketName);
+            if (existingBucket == null)
+            {
+                var bucketConfig = new BucketSettings
+                {
+                    Name = bucketName,
+                    RamQuotaMB = 1000,
+                    BucketType = BucketType.Couchbase,
+                    EvictionPolicy = EvictionPolicyType.ValueOnly,
+                };
+                await bucketManager.CreateBucketAsync(bucketConfig);
+            }
             cluster.Dispose();
         }
     }
